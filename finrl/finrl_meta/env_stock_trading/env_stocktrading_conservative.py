@@ -77,6 +77,8 @@ class StockTradingEnvCon(gym.Env):
         self.cost = 0
         self.trades = 0
         self.episode = 0
+        self.cnt = 0
+        self.value_history = np.zeros(20)
         # memorize all the total balance change
         self.asset_memory = [self.initial_amount+np.sum(np.array(self.num_stock_shares)*np.array(self.state[1:1+self.stock_dim]))] # the initial total asset is calculated by cash + sum (num_share_stock_i * price_stock_i)
         self.rewards_memory = []
@@ -286,6 +288,21 @@ class StockTradingEnvCon(gym.Env):
                 np.array(self.state[1 : (self.stock_dim + 1)])
                 * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
             )
+            self.value_history[self.cnt] = begin_total_asset
+            self.cnt+=1
+            add_drawback=True if self.cnt==10 else False
+            min_drawback = 0
+            if self.cnt==20:
+                drawbacks=[]
+                for i in range(19):
+                    begin_value = self.value_history[i]
+                    following_min = np.min(self.value_history[i+1:])
+                    drawback = following_min-begin_value
+                    drawbacks.append(drawback)
+                min_drawback = np.min(drawbacks)
+                self.cnt = 0
+                self.value_history = np.zeros(20)
+            add_drawback = True if min_drawback<0 else False
             # print("begin_total_asset:{}".format(begin_total_asset))
             # prev_prices = np.array(self.state[1 : (self.stock_dim + 1)])
             argsort_actions = np.argsort(actions)
@@ -323,9 +340,11 @@ class StockTradingEnvCon(gym.Env):
             self.date_memory.append(self._get_date())
             self.reward = end_total_asset - begin_total_asset
             self.rewards_memory.append(self.reward)
+            # if add_drawback:
+            #     self.reward = self.reward + min_drawback*0.1
             self.reward = self.reward * self.reward_scaling
             if self.reward <0:
-                self.reward = self.reward * 1.2
+                self.reward = self.reward * 1.05
             self.state_memory.append(self.state) # add current state in state_recorder for each step
 
         return self.state, self.reward, self.terminal, {}
@@ -333,6 +352,8 @@ class StockTradingEnvCon(gym.Env):
     def reset(self):
         # initiate state
         self.state = self._initiate_state()
+        self.cnt = 0
+        self.value_history = np.zeros(20)
 
         if self.initial:
             self.asset_memory = [self.initial_amount+np.sum(np.array(self.num_stock_shares)*np.array(self.state[1:1+self.stock_dim]))]
